@@ -60,6 +60,10 @@
 #define MQTT 1  // Uncomment or set to 0 to disable MQTT support in code
 #endif
 
+#ifndef HA
+#define HA 0  // set to 1 to enable Home Assistent support in code
+#endif
+
 #ifndef MODEM
 //the wifi-debugger is available by telnetting to your SmartEVSE device
 #define MODEM 0  //0 = no modem 1 = modem
@@ -169,11 +173,11 @@ extern RemoteDebug Debug;
 #define ICAL 1024                                                               // Irms Calibration value (for Current transformers)
 #define MAX_MAINS 25                                                            // max Current the Mains connection can supply
 #define MAX_SUMMAINS 600                                                        // only used for capacity rate limiting, max current over the sum of all phases
-#define MAX_CURRENT 13                                                          // max charging Current for the EV
+#define MAX_CURRENT 32                                                          // max charging Current for the EV
 #define MIN_CURRENT 6                                                           // minimum Current the EV will accept
 #define MODE 0                                                                  // Normal EVSE mode
-#define LOCK 0                                                                  // No Cable lock
-#define MAX_CIRCUIT 16                                                          // Max current of the EVSE circuit breaker
+#define LOCK 2                                                                  // Motor Cable lock with 4 wires
+#define MAX_CIRCUIT 40                                                          // Max current of the EVSE circuit breaker
 #define CONFIG 0                                                                // Configuration: 0= TYPE 2 socket, 1= Fixed Cable
 #define LOADBL 0                                                                // Load Balancing disabled
 #define SWITCH 0                                                                // 0= Charge on plugin, 1= (Push)Button on IO2 is used to Start/Stop charging.
@@ -189,7 +193,7 @@ extern RemoteDebug Debug;
 #define MAINS_METER_ADDRESS 10
 #define PV_METER 0
 #define PV_METER_ADDRESS 11
-#define EV_METER 0
+#define EV_METER 4                                                               // EV Meter: 0 Disabled; 1-10 Preconfigured; 11-15 Unused; 16 Custom
 #define EV_METER_ADDRESS 12
 #define MIN_METER_ADDRESS 10
 #define MAX_METER_ADDRESS 247
@@ -205,7 +209,7 @@ extern RemoteDebug Debug;
 #define EMCUSTOM_EREGISTER 0
 #define EMCUSTOM_EDIVISOR 8
 #define RFID_READER 0
-#define WIFI_MODE 0
+#define WIFI_MODE 1
 #define AP_PASSWORD "00000000"
 #define CARD_OFFSET 0
 #define INITIALIZED 0
@@ -265,10 +269,10 @@ extern RemoteDebug Debug;
 #define BL_FLASH 128
 
 #define STATE_A_LED_BRIGHTNESS 40
-#define STATE_B_LED_BRIGHTNESS 255
-#define ERROR_LED_BRIGHTNESS 255
-#define WAITING_LED_BRIGHTNESS 255
-#define LCD_BRIGHTNESS 255
+#define STATE_B_LED_BRIGHTNESS 64
+#define ERROR_LED_BRIGHTNESS 16
+#define WAITING_LED_BRIGHTNESS 16
+#define LCD_BRIGHTNESS 64
 
 
 #define CP_ON digitalWrite(PIN_CPOFF, LOW);

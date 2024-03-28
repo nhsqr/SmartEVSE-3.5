@@ -82,6 +82,9 @@ ESPAsync_WiFiManager ESPAsync_wifiManager(&webServer, &dnsServer, APhostname.c_s
 String Router_SSID;
 String Router_Pass;
 
+// Debug led RGB
+uint8_t red=0, blue=0, green=0; 
+
 // Create a ModbusRTU server, client and bridge instance on Serial1
 ModbusServerRTU MBserver(2000, PIN_RS485_DIR);     // TCP timeout set to 2000 ms
 ModbusClientRTU MBclient(PIN_RS485_DIR);
@@ -150,8 +153,8 @@ uint8_t Show_RFID = 0;
 #endif
 uint8_t WIFImode = WIFI_MODE;                                               // WiFi Mode (0:Disabled / 1:Enabled / 2:Start Portal)
 String APpassword = "00000000";
+String TZname = "Europe/Sofia";
 uint8_t Initialized = INITIALIZED;                                          // When first powered on, the settings need to be initialized.
-String TZname = "";
 
 EnableC2_t EnableC2 = ENABLE_C2;                                            // Contactor C2
 Modem_t Modem = NOTPRESENT;                                                 // Is an ISO15118 modem installed (experimental)
@@ -274,6 +277,8 @@ int32_t IrmsOriginal[3]={0, 0, 0};
 int homeBatteryCurrent = 0;
 int homeBatteryLastUpdate = 0; // Time in milliseconds
 
+int showSettings = 0;                                                       // Publish settings in MQTT; 0 - disable; 1 - enable
+
 struct EMstruct EMConfig[EM_CUSTOM + 1] = {
     /* DESC,      ENDIANNESS,      FCT, DATATYPE,            U_REG,DIV, I_REG,DIV, P_REG,DIV, E_REG_IMP,DIV, E_REG_EXP, DIV */
     {"Disabled",  ENDIANESS_LBF_LWF, 0, MB_DATATYPE_INT32,        0, 0,      0, 0,      0, 0,      0, 0,0     , 0}, // First entry!
@@ -378,7 +383,7 @@ void BlinkLed(void * parameter) {
     uint8_t LedCount = 0;                                                   // Raw Counter before being converted to PWM value
     unsigned int LedPwm = 0;                                                // PWM value 0-255
 
-    while(1) 
+    while(1)
     {
         // Backlight LCD
         if (BacklightTimer > 1 && BacklightSet != 1) {                      // Enable LCD backlight at max brightness
@@ -404,38 +409,45 @@ void BlinkLed(void * parameter) {
 
             if (ErrorFlags & (RCM_TRIPPED | CT_NOCOMM | EV_NOCOMM) ) {
                 LedCount += 20;                                                 // Very rapid flashing, RCD tripped or no Serial Communication.
-                if (LedCount > 128) LedPwm = ERROR_LED_BRIGHTNESS;              // Red LED 50% of time on, full brightness
+                if (LedCount > 128) LedPwm = ERROR_LED_BRIGHTNESS;              // Red LED 50% of time on, 1/16 brightness
                 else LedPwm = 0;
                 RedPwm = LedPwm;
                 GreenPwm = 0;
                 BluePwm = 0;
             } else {                                                            // Waiting for Solar power or not enough current to start charging
                 LedCount += 2;                                                  // Slow blinking.
-                if (LedCount > 230) LedPwm = WAITING_LED_BRIGHTNESS;            // LED 10% of time on, full brightness
+                if (LedCount > 230) LedPwm = WAITING_LED_BRIGHTNESS;            // LED 10% of time on, 1/16 brightness
                 else LedPwm = 0;
 
                 if (Mode == MODE_SOLAR) {                                       // Orange
                     RedPwm = LedPwm;
                     GreenPwm = LedPwm * 2 / 3;
-                } else {                                                        // Green
+                } else {                                                        // Blue
                     RedPwm = 0;
-                    GreenPwm = LedPwm;
+                    BluePwm = LedPwm;
                 }    
-                BluePwm = 0;
+                GreenPwm = 0;
             }
 
-        } else if (Access_bit == 0 || State == STATE_MODEM_DENIED) {                                            // No Access, LEDs off
-            RedPwm = 0;
-            GreenPwm = 0;
-            BluePwm = 0;
-            LedPwm = 0;                  
+        } else if (Access_bit == 0 || State == STATE_MODEM_DENIED) {            // No Access
+            if (pilot != PILOT_12V) {
+                LedCount += 2;                                                  // flashing
+                if (LedCount > 128) LedPwm = STATE_B_LED_BRIGHTNESS;            // Green LED 50% of time on, 1/4 brightness
+                else LedPwm = 0;
+                GreenPwm = LedPwm;
+            } else {
+                RedPwm = 0;
+                GreenPwm = STATE_B_LED_BRIGHTNESS;
+                BluePwm = 0;
+                LedPwm = 0;                  
+            }
         } else {                                                                // State A, B or C
     
             if (State == STATE_A) {
                 LedPwm = STATE_A_LED_BRIGHTNESS;                                // STATE A, LED on (dimmed)
             
             } else if (State == STATE_B || State == STATE_B1 || State == STATE_MODEM_REQUEST || State == STATE_MODEM_WAIT) {
-                LedPwm = STATE_B_LED_BRIGHTNESS;                                // STATE B, LED on (full brightness)
+                LedPwm = STATE_B_LED_BRIGHTNESS;                                // STATE B, LED on (1/4 brightness)
                 LedCount = 128;                                                 // When switching to STATE C, start at full brightness
 
             } else if (State == STATE_C) {                                      
@@ -448,12 +460,19 @@ void BlinkLed(void * parameter) {
                 RedPwm = LedPwm;
                 GreenPwm = LedPwm * 2 / 3;
             } else {
-                RedPwm = 0;                                                     // Green for Normal/Smart mode
-                GreenPwm = LedPwm;
+                RedPwm = 0;                                                     // Blue for Normal/Smart mode
+                BluePwm = LedPwm;
             }
-            BluePwm = 0;            
+            GreenPwm = 0;            
 
         }
+
+        if (red!=0 || blue!=0 || green!=0) {
+            RedPwm = red;
+            GreenPwm = green;
+            BluePwm = blue;
+        }
+
         ledcWrite(RED_CHANNEL, RedPwm);
         ledcWrite(GREEN_CHANNEL, GreenPwm);
         ledcWrite(BLUE_CHANNEL, BluePwm);
@@ -2497,6 +2516,8 @@ void mqtt_receive_callback(const String &topic, const String &payload) {
             setAccess(0);
         } else if (payload == "Normal") {
             setMode(MODE_NORMAL);
+            EnergyMeterStart = EnergyEV;
+            ResetKwh = 0;
         } else if (payload == "Solar") {
             OverrideCurrent = 0;
             setMode(MODE_SOLAR);
@@ -2536,6 +2557,7 @@ void mqtt_receive_callback(const String &topic, const String &payload) {
             CPDutyOverride = true;
         }
     } else if (topic == MQTTprefix + "/Set/MainsMeter") {
+        setItemValue(MENU_MAINSMETER, payload.toInt());
         if (MainsMeter != EM_API || LoadBl >= 2)
             return;
 
@@ -2552,8 +2574,10 @@ void mqtt_receive_callback(const String &topic, const String &payload) {
             CalcIsum();
         }
     } else if (topic == MQTTprefix + "/Set/EVMeter") {
-        if (EVMeter != EM_API)
+        setItemValue(MENU_EVMETER, payload.toInt());
+        if (EVMeter != EM_API) {
             return;
+        }
 
         int32_t L1, L2, L3, W, WH;
         int n = sscanf(payload.c_str(), "%d:%d:%d:%d:%d", &L1, &L2, &L3, &W, &WH);
@@ -2582,6 +2606,40 @@ void mqtt_receive_callback(const String &topic, const String &payload) {
                 RecomputeSoC();                              // Recalculate SoC
             }
         }
+    } else if (topic == MQTTprefix + "/Set/EVAddress") {
+        setItemValue(MENU_EVMETERADDRESS, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/MainsAddress") {
+        setItemValue(MENU_MAINSMETERADDRESS, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMEndianness") {
+        setItemValue(MENU_EMCUSTOM_ENDIANESS, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMDataType") {
+        setItemValue(MENU_EMCUSTOM_DATATYPE, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMFunction") {
+        setItemValue(MENU_EMCUSTOM_FUNCTION, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMURegister") {
+        setItemValue(MENU_EMCUSTOM_UREGISTER, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMUDivisor") {
+        setItemValue(MENU_EMCUSTOM_UDIVISOR, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMIRegister") {
+        setItemValue(MENU_EMCUSTOM_IREGISTER, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMIDivisor") {
+        setItemValue(MENU_EMCUSTOM_IDIVISOR, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMPRegister") {
+        setItemValue(MENU_EMCUSTOM_PREGISTER, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMPDivisor") {
+        setItemValue(MENU_EMCUSTOM_PDIVISOR, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMERegister") {
+        setItemValue(MENU_EMCUSTOM_EREGISTER, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/EMEDivisor") {
+        setItemValue(MENU_EMCUSTOM_EDIVISOR, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/Switch") {
+        setItemValue(MENU_SWITCH, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/MaxCurrent") {
+        setItemValue(MENU_MAX, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/Lock") {
+        setItemValue(MENU_LOCK, payload.toInt());
+    } else if (topic == MQTTprefix + "/Set/Settings") {
+        showSettings = payload.toInt();
     } else if (topic == MQTTprefix + "/Set/HomeBatteryCurrent") {
         if (LoadBl >= 2)
             return;
@@ -2593,10 +2651,33 @@ void mqtt_receive_callback(const String &topic, const String &payload) {
             preferences.putString("RequiredEVCCID", String(RequiredEVCCID));
             preferences.end();
         }
+    } else if (topic == MQTTprefix + "/Set/EraseSettings") {
+        if (payload.toInt() == 1) {
+            if ( preferences.begin("settings", false) ) {         // our own settings
+                preferences.clear();
+                preferences.end();
+            }
+            if (preferences.begin("nvs.net80211", false) ) {      // WiFi settings used by ESP
+                preferences.clear();
+                preferences.end();       
+            }
+            ESP.restart(); 
+        }
+    } else if (topic == MQTTprefix + "/Set/Red") {
+        red = payload.toInt();
+    } else if (topic == MQTTprefix + "/Set/Blue") {
+        blue = payload.toInt();
+    } else if (topic == MQTTprefix + "/Set/Green") {
+        green = payload.toInt();
     }
-
+    write_settings();
     // Make sure MQTT updates directly to prevent debounces
     lastMqttUpdate = 10;
+    if (topic == MQTTprefix + "/Set/Reboot") {
+        if (payload.toInt() == 1) {
+            ESP.restart();
+        };
+    }
 }
 
 void SetupMQTTClient() {
@@ -2632,6 +2713,7 @@ void SetupMQTTClient() {
         MQTTclient.publish(MQTTprefix+"/connected", "online", true, 0);
     }
 
+#if HA
     //publish MQTT discovery topics
     //we need something to make all this JSON stuff readable, without doing all this assign and serialize stuff
 #define jsn(x, y) String(R"(")") + x + R"(" : ")" + y + R"(")"
@@ -2752,10 +2834,18 @@ void SetupMQTTClient() {
     optional_payload = jsna("command_topic", String(MQTTprefix + "/Set/CurrentOverride")) + jsna("min", "0") + jsna("max", MaxCurrent ) + jsna("mode","slider");
     optional_payload += jsna("value_template", R"({{ none if (value | int == 0) else (value | int / 10) }})") + jsna("command_template", R"({{ value | int * 10 }})");
     announce("Charge Current Override", "number");
+#endif
 }
 
 void mqttPublishData() {
     lastMqttUpdate = 0;
+    //we need something to make all this JSON stuff readable, without doing all this assign and serialize stuff
+    #define jsn(x, y) String(R"(")") + x + R"(" : ")" + y + R"(")"
+    //jsn(device_class, current) expands to:
+    // R"("device_class" : "current")"
+
+    #define jsna(x, y) String(R"(, )") + jsn(x, y)
+    //json add expansion, same as above but now with a comma prepended
 
     if (MQTTclient.connected()) {
         if (MainsMeter) {
@@ -2768,20 +2858,11 @@ void mqttPublishData() {
             MQTTclient.publish(MQTTprefix + "/EVCurrentL2", String(Irms_EV[1]), false, 0);
             MQTTclient.publish(MQTTprefix + "/EVCurrentL3", String(Irms_EV[2]), false, 0);
         }
-        MQTTclient.publish(MQTTprefix + "/ESPUptime", String((esp_timer_get_time() / 1000000)), false, 0);
-        MQTTclient.publish(MQTTprefix + "/ESPTemp", String(TempEVSE), false, 0);
         MQTTclient.publish(MQTTprefix + "/Mode", Access_bit == 0 ? "Off" : Mode > 3 ? "N/A" : StrMode[Mode], true, 0);
-        MQTTclient.publish(MQTTprefix + "/MaxCurrent", String(MaxCurrent * 10), true, 0);
-        MQTTclient.publish(MQTTprefix + "/ChargeCurrent", String(Balanced[0]), true, 0);
-        MQTTclient.publish(MQTTprefix + "/ChargeCurrentOverride", String(OverrideCurrent), true, 0);
         MQTTclient.publish(MQTTprefix + "/Access", String(StrAccessBit[Access_bit]), true, 0);
-        MQTTclient.publish(MQTTprefix + "/RFID", !RFIDReader ? "Not Installed" : RFIDstatus >= 8 ? "NOSTATUS" : StrRFIDStatusWeb[RFIDstatus], true, 0);
         MQTTclient.publish(MQTTprefix + "/State", getStateNameWeb(State), true, 0);
         MQTTclient.publish(MQTTprefix + "/Error", getErrorNameWeb(ErrorFlags), true, 0);
         MQTTclient.publish(MQTTprefix + "/EVPlugState", (pilot != PILOT_12V) ? "Connected" : "Disconnected", true, 0);
-        MQTTclient.publish(MQTTprefix + "/WiFiSSID", String(WiFi.SSID()), true, 0);
-        MQTTclient.publish(MQTTprefix + "/WiFiBSSID", String(WiFi.BSSIDstr()), true, 0);
-        MQTTclient.publish(MQTTprefix + "/WiFiRSSI", String(WiFi.RSSI()), false, 0);
 #if MODEM
         if (Modem) {
             MQTTclient.publish(MQTTprefix + "/CPPWM", String(CurrentPWM), false, 0);
@@ -2798,12 +2879,35 @@ void mqttPublishData() {
         }
 #endif
         if (EVMeter) {
-            MQTTclient.publish(MQTTprefix + "/EVChargePower", String(PowerMeasured), false, 0);
+            MQTTclient.publish(MQTTprefix + "/EVChargePower", String(PowerMeasured), true, 0);
             MQTTclient.publish(MQTTprefix + "/EVEnergyCharged", String(EnergyCharged), true, 0);
-            MQTTclient.publish(MQTTprefix + "/EVTotalEnergyCharged", String(EnergyEV), false, 0);
+            MQTTclient.publish(MQTTprefix + "/EVTotalEnergyCharged", String(EnergyEV), true, 0);
         }
         if (homeBatteryLastUpdate)
             MQTTclient.publish(MQTTprefix + "/HomeBatteryCurrent", String(homeBatteryCurrent), false, 0);
+        if (showSettings == 1) {
+            MQTTclient.publish(MQTTprefix + "/Settings", \
+            "{" \
+                + jsn("ESPUptime", String((esp_timer_get_time() / 1000000))) \
+                + jsna("ESPTemp", String(TempEVSE)) \
+                + jsna("MaxCurrent", String(MaxCurrent * 10)) \
+                + jsna("ChargeCurrent", String(Balanced[0])) \
+                + jsna("ChargeCurrentOverride", String(OverrideCurrent)) \
+                + jsna("RFID", (!RFIDReader ? "Not Installed" : RFIDstatus >= 8 ? "NOSTATUS" : StrRFIDStatusWeb[RFIDstatus])) \
+                + jsna("WiFiSSID", String(WiFi.SSID())) \
+                + jsna("WiFiBSSID", String(WiFi.BSSIDstr())) \
+                + jsna("WiFiRSSI", String(WiFi.RSSI())) \
+                + jsna("Pilot", String(pilot)) \
+                + "}", \
+            false, 0); // Retain + QoS 0
+        } else if (showSettings == 2) {
+            int i = 2;
+            String menu = jsn(MenuStr[i].LCD, getItemValue(i));
+            for (i = MENU_ENTER + 1;i < MENU_EXIT; i++){
+                menu = menu + jsna(MenuStr[i].LCD, getItemValue(i));
+            }
+            MQTTclient.publish(MQTTprefix + "/Menu", "{" + menu + "}", false, 0); // Retain + QoS 0
+        }
     } else {
         if (WiFi.status() == WL_CONNECTED) {
             // Setup MQTT client again so we can reconnect
@@ -3608,7 +3712,7 @@ void read_settings() {
         APpassword = preferences.getString("APpassword",AP_PASSWORD);
         DelayedStartTime.epoch2 = preferences.getULong("DelayedStartTim", DELAYEDSTARTTIME); //epoch2 is 4 bytes long on arduino; NVS key has reached max size
         DelayedStopTime.epoch2 = preferences.getULong("DelayedStopTime", DELAYEDSTOPTIME);    //epoch2 is 4 bytes long on arduino
-        TZname = preferences.getString("Timezone","Europe/Berlin");
+        TZname = preferences.getString("Timezone", TZname);
 
         EnableC2 = (EnableC2_t) preferences.getUShort("EnableC2", ENABLE_C2);
 #if MODEM
@@ -3620,11 +3724,11 @@ void read_settings() {
         maxTemp = preferences.getUShort("maxTemp", MAX_TEMPERATURE);
 
 #if MQTT
-        MQTTpassword = preferences.getString("MQTTpassword");
-        MQTTuser = preferences.getString("MQTTuser");
+        MQTTpassword = preferences.getString("MQTTpassword", MQTTpassword);
+        MQTTuser = preferences.getString("MQTTuser", MQTTuser);
         MQTTprefix = preferences.getString("MQTTprefix", APhostname);
-        MQTTHost = preferences.getString("MQTTHost", "");
-        MQTTPort = preferences.getUShort("MQTTPort", 1883);
+        MQTTHost = preferences.getString("MQTTHost", MQTTHost);
+        MQTTPort = preferences.getUShort("MQTTPort", MQTTPort);
 #endif
 
         preferences.end();                                  
@@ -4568,12 +4672,12 @@ void handleWIFImode() {
         _LOG_A("Starting WiFi..\n");
         WiFi.mode(WIFI_STA);
         WiFi.begin();
-    }    
+    }
 
     if (WIFImode == 0 && WiFi.getMode() != WIFI_OFF) {
         _LOG_A("Stopping WiFi..\n");
         WiFi.disconnect(true);
-    }    
+    }
 }
 
 
@@ -4678,9 +4782,9 @@ void setup() {
     ledcAttachPin(PIN_LCD_LED, LCD_CHANNEL);
 
     SetCPDuty(1024);                            // channel 0, duty cycle 100%
-    ledcWrite(RED_CHANNEL, 255);
+    ledcWrite(RED_CHANNEL, 0);
     ledcWrite(GREEN_CHANNEL, 0);
-    ledcWrite(BLUE_CHANNEL, 255);
+    ledcWrite(BLUE_CHANNEL, 0);
     ledcWrite(LCD_CHANNEL, 0);
 
     // Setup PIN interrupt on rising edge
