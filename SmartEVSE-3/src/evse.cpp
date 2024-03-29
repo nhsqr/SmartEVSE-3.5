@@ -2653,15 +2653,19 @@ void mqtt_receive_callback(const String &topic, const String &payload) {
         }
     } else if (topic == MQTTprefix + "/Set/EraseSettings") {
         if (payload.toInt() == 1) {
-            if ( preferences.begin("settings", false) ) {         // our own settings
+            if (preferences.begin("settings", false) ) {         // our own settings
                 preferences.clear();
                 preferences.end();
             }
+            ESP.restart();
+        }
+    } else if (topic == MQTTprefix + "/Set/EraseWiFi") {
+        if (payload.toInt() == 1) {
             if (preferences.begin("nvs.net80211", false) ) {      // WiFi settings used by ESP
                 preferences.clear();
-                preferences.end();       
+                preferences.end();
             }
-            ESP.restart(); 
+            ESP.restart();
         }
     } else if (topic == MQTTprefix + "/Set/Red") {
         red = payload.toInt();
