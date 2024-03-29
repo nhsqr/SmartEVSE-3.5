@@ -2848,16 +2848,6 @@ void mqttPublishData() {
     //json add expansion, same as above but now with a comma prepended
 
     if (MQTTclient.connected()) {
-        if (MainsMeter) {
-            MQTTclient.publish(MQTTprefix + "/MainsCurrentL1", String(Irms[0]), false, 0);
-            MQTTclient.publish(MQTTprefix + "/MainsCurrentL2", String(Irms[1]), false, 0);
-            MQTTclient.publish(MQTTprefix + "/MainsCurrentL3", String(Irms[2]), false, 0);
-        }
-        if (EVMeter) {
-            MQTTclient.publish(MQTTprefix + "/EVCurrentL1", String(Irms_EV[0]), false, 0);
-            MQTTclient.publish(MQTTprefix + "/EVCurrentL2", String(Irms_EV[1]), false, 0);
-            MQTTclient.publish(MQTTprefix + "/EVCurrentL3", String(Irms_EV[2]), false, 0);
-        }
         MQTTclient.publish(MQTTprefix + "/Mode", Access_bit == 0 ? "Off" : Mode > 3 ? "N/A" : StrMode[Mode], true, 0);
         MQTTclient.publish(MQTTprefix + "/Access", String(StrAccessBit[Access_bit]), true, 0);
         MQTTclient.publish(MQTTprefix + "/State", getStateNameWeb(State), true, 0);
@@ -2907,7 +2897,20 @@ void mqttPublishData() {
             for (i = MENU_ENTER + 1;i < MENU_EXIT; i++){
                 menu = menu + jsna(MenuStr[i].LCD, getItemValue(i));
             }
-            MQTTclient.publish(MQTTprefix + "/Menu", "{" + menu + "}", false, 0); // Retain + QoS 0
+            MQTTclient.publish(MQTTprefix + "/Menu", "{" + menu + "}", false, 0);
+        } else if (showSettings == 3) {
+                String MeterCurrents = "";
+                if (MainsMeter) {
+                    MeterCurrents = jsn("MainsCurrentL1", String(Irms[0])) \
+                    + jsna("MainsCurrentL2", String(Irms[1])) \
+                    + jsna("MainsCurrentL3", String(Irms[2]));
+                }
+                if (EVMeter) {
+                    MeterCurrents = jsn("EVCurrentL1", String(Irms[0])) \
+                    + jsna("EVCurrentL2", String(Irms[1])) \
+                    + jsna("EVCurrentL3", String(Irms[2]));
+                }
+            MQTTclient.publish(MQTTprefix + "/MeterCurrents", "{" + MeterCurrents + "}", false, 0);
         }
     } else {
         if (WiFi.status() == WL_CONNECTED) {
