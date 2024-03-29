@@ -2897,6 +2897,7 @@ void mqttPublishData() {
                 + jsna("WiFiSSID", String(WiFi.SSID())) \
                 + jsna("WiFiBSSID", String(WiFi.BSSIDstr())) \
                 + jsna("WiFiRSSI", String(WiFi.RSSI())) \
+                + jsna("Local IP", String(WiFi.localIP().toString())) \
                 + jsna("Pilot", String(pilot)) \
                 + "}", \
             false, 0); // Retain + QoS 0
