@@ -171,7 +171,7 @@ extern RemoteDebug Debug;
 #define PWM_100 1000                                                            // 100% of PWM
 
 #define ICAL 1024                                                               // Irms Calibration value (for Current transformers)
-#define MAX_MAINS 25                                                            // max Current the Mains connection can supply
+#define MAX_MAINS 40                                                            // max Current the Mains connection can supply
 #define MAX_SUMMAINS 600                                                        // only used for capacity rate limiting, max current over the sum of all phases
 #define MAX_CURRENT 32                                                          // max charging Current for the EV
 #define MIN_CURRENT 6                                                           // minimum Current the EV will accept
