@@ -2903,22 +2903,24 @@ void mqttPublishData() {
             }
             MQTTclient.publish(MQTTprefix + "/Menu", "{" + menu + "}", false, 0);
         } else if (showSettings == 3) {
-                String MeterCurrents = "";
+            String MeterCurrents = "";
+            if (MainsMeter) {
+                MeterCurrents = jsn("MainsCurrentL1", String(Irms[0])) \
+                + jsna("MainsCurrentL2", String(Irms[1])) \
+                + jsna("MainsCurrentL3", String(Irms[2]));
+            }
+            if (EVMeter) {
                 if (MainsMeter) {
-                    MeterCurrents = jsn("MainsCurrentL1", String(Irms[0])) \
-                    + jsna("MainsCurrentL2", String(Irms[1])) \
-                    + jsna("MainsCurrentL3", String(Irms[2]));
+                    MeterCurrents += jsna("EVCurrentL1", String(Irms_EV[0]));
+                } else {
+                    MeterCurrents = jsn("EVCurrentL1", String(Irms_EV[0]));
                 }
-                if (EVMeter) {
-                    if (MainsMeter) {
-                        MeterCurrents += jsna("EVCurrentL1", String(Irms_EV[0]));
-                    } else {
-                        MeterCurrents = jsn("EVCurrentL1", String(Irms_EV[0]));
-                    }
-                    MeterCurrents += jsna("EVCurrentL2", String(Irms_EV[1])) \
-                    + jsna("EVCurrentL3", String(Irms_EV[2]));
-                }
-            MQTTclient.publish(MQTTprefix + "/MeterCurrents", "{" + MeterCurrents + "}", false, 0);
+                MeterCurrents += jsna("EVCurrentL2", String(Irms_EV[1])) \
+                + jsna("EVCurrentL3", String(Irms_EV[2]));
+            }
+            if (EVMeter || MainsMeter) {
+                MQTTclient.publish(MQTTprefix + "/MeterCurrents", "{" + MeterCurrents + "}", false, 0);
+            }
         }
     } else {
         if (WiFi.status() == WL_CONNECTED) {
