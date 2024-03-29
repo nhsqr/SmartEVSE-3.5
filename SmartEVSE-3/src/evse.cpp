@@ -2910,8 +2910,12 @@ void mqttPublishData() {
                     + jsna("MainsCurrentL3", String(Irms[2]));
                 }
                 if (EVMeter) {
-                    MeterCurrents = jsn("EVCurrentL1", String(Irms_EV[0])) \
-                    + jsna("EVCurrentL2", String(Irms_EV[1])) \
+                    if (MainsMeter) {
+                        MeterCurrents += jsna("EVCurrentL1", String(Irms_EV[0]));
+                    } else {
+                        MeterCurrents = jsn("EVCurrentL1", String(Irms_EV[0]));
+                    }
+                    MeterCurrents += jsna("EVCurrentL2", String(Irms_EV[1])) \
                     + jsna("EVCurrentL3", String(Irms_EV[2]));
                 }
             MQTTclient.publish(MQTTprefix + "/MeterCurrents", "{" + MeterCurrents + "}", false, 0);
