@@ -37,7 +37,7 @@ PWR SHARE  ; formerly known as LOADBALANCING.
   <Master>	Set the first SmartEVSE to Master. Make sure there is only one Master.
   <Node1-7>	And the other SmartEVSE's to Node 1-7.
 
-MAINSMET Set type of MAINS meter
+MAINSMET Set type of MAINS meter (only appears in Smart or Solar mode):
   <Disabled>    No MAINS meter connected; only Normal mode possible
   <Sensorbox>   the Sensorbox will send measurement data to the SmartEVSE
   <API>         The MAINS meter data will be fed through the REST API or the MQTT API.
@@ -100,12 +100,23 @@ WIFI          Enable wifi connection to your LAN
               and configure your Wifi password
   <Enabled>   Connect to your LAN via Wifi.
 
+AUTOUPDAT     (only appears when WIFI is Enabled):
+              Automatic update of your firmware
+  <Disabled>  No automatic update
+  <Enabled>   Checks every 18 hours if there is a new stable firmware version available;
+              If so, downloads and flashes it, and reboots as soon as no EV is connected.
+              DOES NOT WORK if your current version is not one of the format vx.y.z, e.g. v3.6.1
+              So locally compiled versions, or RCx versions, will NOT Autoupdate!
+
 MAX TEMP      Maximum allowed temperature for your SmartEVSE; 40-75C, default 65.
               You can increase this if your SmartEVSE is in direct sunlight.
 
 SUMMAINS      (only appears when a MAINSMET is configured):
               Maximum allowed Mains Current summed over all phases: 10-600A
               This is used for the EU Capacity rate limiting, currently only in Belgium
+SUM STOP      (only appears when a SUMMAINS is configured):
+              Timer in minutes; if set, if SUMMAINS is exceeded, we do not immediately stop
+              charging but wait until the timer expires.
 
 The following options are only shown when Mode set to <Solar> and
 PWR SHARE set to <Disabled> or <Master>:
@@ -139,7 +150,6 @@ CONTACT2      One can add a second contactor (C2) that switches off 2 of the 3 p
   <Solar Off>   C2 is always on except in Solar Mode where it is always off
   <Auto>        SmartEVSE starts charging at 3phase, but when in Solar mode and not enough
                 current available for 3 phases, switches off C2 so it will continue on 1 phase
-                Note: CONTACT2 will be set to ALWAYS_ON when PWR SHARE is enabled.
 
 
 ```
@@ -250,6 +260,7 @@ You can get the latest release off of https://github.com/dingo35/SmartEVSE-3.5/r
 * Install platformio-core https://docs.platformio.org/en/latest/core/installation/methods/index.html
 * Clone this github project, cd to the smartevse directory where platformio.ini is located
 * Compile firmware.bin: platformio run
+For versions older than v3.6.0:
 * Compile spiffs.bin: platformio run -t buildfs
 
 If you are not using the webserver /update endpoint:

@@ -33,7 +33,7 @@
 #include "OneWire.h"
 
 unsigned char RFID[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-unsigned char RFIDlist[120];                                                    // holds up to 20 RFIDs
+unsigned char RFIDlist[600];                                                    // holds up to 100 RFIDs
 
 
 // ############################# OneWire functions #############################
@@ -155,30 +155,13 @@ unsigned char OneWireReadCardId(void) {
 
 
 
-// Read a list of 20 RFID's from preferences
-//
-void ReadRFIDlist(void) {
-    uint8_t initialized = 0;
-
-    if (preferences.begin("RFIDlist", false) ) {
-        initialized = preferences.getUChar("RFIDinit", 0);
-        if (initialized) preferences.getBytes("RFID", RFIDlist, 120);     // read 120 bytes from storage
-        preferences.end();
-
-        if (initialized == 0 ) DeleteAllRFID();           // when unitialized, delete all cardIDs 
-
-    } else {
-        _LOG_A("Error opening preferences!\n") ;
-    }
-}
-
 // Write a list of 20 RFID's to the eeprom
 //
 void WriteRFIDlist(void) {
 
-    if (preferences.begin("RFIDlist", false) ) {
-        preferences.putBytes("RFID", RFIDlist, 120);                                // write 120 bytes to storage
-        preferences.putUChar("RFIDinit", 1);                                      // data initialized
+    if (preferences.begin("RFIDlist", false) ) {                                // read/write
+        preferences.putBytes("RFID", RFIDlist, 600);                            // write 600 bytes to storage
+        preferences.putUChar("RFIDinit", 2);                                    // data initialized to 600byte mode
         preferences.end();
     } else {
         _LOG_A("Error opening preferences!\n");
@@ -188,15 +171,46 @@ void WriteRFIDlist(void) {
     _LOG_I("\nRFID list saved\n");
 }
 
+// Read a list of 20 RFID's from preferences
+//
+void ReadRFIDlist(void) {
+    uint8_t initialized = 0;
+
+    if (preferences.begin("RFIDlist", true) ) {                                 // read only
+        initialized = preferences.getUChar("RFIDinit", 0);
+        switch (initialized) {
+            case 1:                                                             // we were initialized to old 120 bytes mode
+                preferences.getBytes("RFID", RFIDlist, 120);                    // read 120 bytes from storage
+                //we are now going to convert from RFIDlist 120bytes to RFIDlist 600bytes
+                for (int i = 120; i < 600; i++) RFIDlist[i] = 0xff;
+                preferences.remove("RFID");
+                preferences.end();
+                WriteRFIDlist();
+                break;
+            case 0:
+                DeleteAllRFID();                                                // when unitialized, delete all cardIDs
+                setItemValue(MENU_RFIDREADER, 0);                               // RFID Reader Disabled
+                break;
+            case 2:                                                             // extended RFIDlist with room for 100tags of 6 bytes = 600 bytes
+                preferences.getBytes("RFID", RFIDlist, 600);                    // read 600 bytes from storage
+                preferences.end();
+                break;
+        }
+
+    } else {
+        _LOG_A("Error opening preferences!\n") ;
+    }
+}
+
 // scan for matching RFID in RFIDlist
 // returns offset+6 when found, 0 when not found
-unsigned char MatchRFID(void) {
-    unsigned char offset = 0, r;
+uint16_t MatchRFID(void) {
+    uint16_t offset = 0, r;
 
     do {
         r = memcmp(RFID + 1, RFIDlist + offset, 6);                            // compare read RFID with list of stored RFID's
         offset += 6;
-    } while (r !=0 && offset < 114);
+    } while (r !=0 && offset < 594);
 
     if (r == 0) return offset;                                                  // return offset + 6 in RFIDlist
     else return 0;
@@ -208,7 +222,7 @@ unsigned char MatchRFID(void) {
 // returns 2 when already stored
 // returns 0 when all slots are full.
 unsigned char StoreRFID(void) {
-    unsigned char offset = 0, r;
+    uint16_t offset = 0, r;
     unsigned char empty[6] = {0xff,0xff,0xff,0xff,0xff,0xff};
 
     // first check if the Card ID was already stored.
@@ -217,23 +231,30 @@ unsigned char StoreRFID(void) {
     do {
         r = memcmp(empty, RFIDlist + offset, 6);
         offset += 6;
-    } while (r !=0 && offset < 120);
+    } while (r !=0 && offset < 600);
     if (r != 0) return 0;                                                       // no more room to store RFID
     offset -= 6;
     _LOG_A("offset %u ",offset);
     memcpy(RFIDlist + offset, RFID+1, 6);
 
     _LOG_I("\nRFIDlist:");
-    for (r=0; r<120; r++) _LOG_I("%02x",RFIDlist[r]);
+    for (r=0; r<600; r++) _LOG_I_NO_FUNC("%02x",RFIDlist[r]);
 
     WriteRFIDlist();
     return 1;
 }
 
+//load and store parameter RFIDparm into global variable RFID
+void LoadandStoreRFID(unsigned int *RFIDparam) {
+    for (int i = 0; i < 8; i++)
+        RFID[i]=RFIDparam[i];
+    StoreRFID();
+}
+
 // Delete RFID card in memory and eeprom
 // returns 1 when successful, 0 when RFID was not found
 unsigned char DeleteRFID(void) {
-    unsigned char offset = 0, r;
+    uint16_t offset = 0, r;
 
     offset = MatchRFID();                                                       // find RFID in list
     if (offset) {
@@ -242,79 +263,92 @@ unsigned char DeleteRFID(void) {
     } else return 0;
 
     _LOG_A("deleted %u ",offset);
-    for (r=0; r<120; r++) _LOG_A("%02x",RFIDlist[r]);
+    for (r=0; r<600; r++) _LOG_A("%02x",RFIDlist[r]);
     
     WriteRFIDlist();
     return 1;
 }
 
 void DeleteAllRFID(void) {
-    unsigned char i;
+    uint16_t i;
 
-    for (i = 0; i < 120; i++) RFIDlist[i] = 0xff;
+    for (i = 0; i < 600; i++) RFIDlist[i] = 0xff;
     WriteRFIDlist();
     _LOG_I("All RFID cards erased!\n");
-    setItemValue(MENU_RFIDREADER, 0);                                           // RFID Reader Disabled
 }
 
 void CheckRFID(void) {
-    unsigned char x;
+    uint16_t x;
     // When RFID is enabled, a OneWire RFID reader is expected on the SW input
     uint8_t RFIDReader = getItemValue(MENU_RFIDREADER);
     if (RFIDReader) {                                        // RFID Reader set to Enabled, Learn or Delete
         if (OneWireReadCardId() ) {                                             // Read card ID
-            switch (RFIDReader) {
-                case 1:                                                         // EnableAll. All learned cards accepted for locking /unlocking
-                    x = MatchRFID();
-                    if (x && !RFIDstatus) {
-                        _LOG_A("RFID card found!\n");
-                        if (Access_bit) {
-                            setAccess(false);                                   // Access Off, Switch back to state B1/C1
-                        } else setAccess(true);
+#if ENABLE_OCPP
+            uint8_t OcppMode = getItemValue(MENU_OCPP);
+            if (OcppMode &&                                                     // Remote authorization via OCPP?
+                    (RFIDReader == 1 || // EnableAll
+                     RFIDReader == 2)) { // EnableOne
+                // Use OCPP
 
-                        RFIDstatus = 1;
-                    }  else if (!x) RFIDstatus = 7;                             // invalid card
-                    BacklightTimer = BACKLIGHT;
-                    break;
-                case 2:                                                         // EnableOne. Only the card that unlocks, can re-lock the EVSE   
-                    x = MatchRFID();
-                    if (x && !RFIDstatus) {
-                        _LOG_A("RFID card found!\n");
-                        if (!Access_bit) {
-                            CardOffset = x;                                     // store cardoffset from current card
-                            setAccess(true);                                    // Access On
-                        } else if (CardOffset == x) {
-                            setAccess(false);                                   // Access Off, Switch back to state B1/C1
+                ocppUpdateRfidReading(RFID + 1, 7); // UUID starts at RFID+1; Assume 7-byte UUID for now
+            } else
+#endif
+            {
+                // Use local whitelist
+
+                switch (RFIDReader) {
+                    case 1:                                                         // EnableAll. All learned cards accepted for locking /unlocking
+                        x = MatchRFID();
+                        if (x && !RFIDstatus) {
+                            _LOG_A("RFID card found!\n");
+                            if (Access_bit) {
+                                setAccess(false);                                   // Access Off, Switch back to state B1/C1
+                            } else setAccess(true);
+
+                            RFIDstatus = 1;
+                        }  else if (!x) RFIDstatus = 7;                             // invalid card
+                        BacklightTimer = BACKLIGHT;
+                        break;
+                    case 2:                                                         // EnableOne. Only the card that unlocks, can re-lock the EVSE
+                        x = MatchRFID();
+                        if (x && !RFIDstatus) {
+                            _LOG_A("RFID card found!\n");
+                            if (!Access_bit) {
+                                CardOffset = x;                                     // store cardoffset from current card
+                                setAccess(true);                                    // Access On
+                            } else if (CardOffset == x) {
+                                setAccess(false);                                   // Access Off, Switch back to state B1/C1
+                            }
+                            RFIDstatus = 1;
+                        }  else if (!x) RFIDstatus = 7;                             // invalid card
+                        BacklightTimer = BACKLIGHT;
+                        break;
+                    case 3:                                                         // Learn Card
+                        x = StoreRFID();
+                        if (x == 1) {
+                            _LOG_A("RFID card stored!\n");
+                            RFIDstatus = 2;
+                        } else if (x == 2 && !RFIDstatus) {
+                            _LOG_A("RFID card was already stored!\n");
+                            RFIDstatus = 4;
+                        } else if (!RFIDstatus) {
+                            _LOG_A("RFID storage full! Delete card first\n");
+                            RFIDstatus = 6;
                         }
-                        RFIDstatus = 1;                            
-                    }  else if (!x) RFIDstatus = 7;                             // invalid card
-                    BacklightTimer = BACKLIGHT;
-                    break;
-                case 3:                                                         // Learn Card
-                    x = StoreRFID();
-                    if (x == 1) {
-                        _LOG_A("RFID card stored!\n");
-                        RFIDstatus = 2;
-                    } else if (x == 2 && !RFIDstatus) {
-                        _LOG_A("RFID card was already stored!\n");
-                        RFIDstatus = 4;
-                    } else if (!RFIDstatus) {
-                        _LOG_A("RFID storage full! Delete card first\n");
-                        RFIDstatus = 6;
-                    }
-                    break;
-                case 4:                                                         // Delete Card
-                    x = DeleteRFID();
-                    if (x) {
-                        _LOG_A("RFID card deleted!\n");
-                        RFIDstatus = 3;
-                    } else if (!RFIDstatus) {
-                        _LOG_A("RFID card not in list!\n");
-                        RFIDstatus = 5;
-                    }
-                    break;
-                default:
-                    break;
+                        break;
+                    case 4:                                                         // Delete Card
+                        x = DeleteRFID();
+                        if (x) {
+                            _LOG_A("RFID card deleted!\n");
+                            RFIDstatus = 3;
+                        } else if (!RFIDstatus) {
+                            _LOG_A("RFID card not in list!\n");
+                            RFIDstatus = 5;
+                        }
+                        break;
+                    default:
+                        break;
+                }
             }
         } else RFIDstatus = 0;
     }

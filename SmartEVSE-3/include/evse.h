@@ -27,7 +27,7 @@
 
 #ifndef DBG
 //the wifi-debugger is available by telnetting to your SmartEVSE device
-#define DBG 2  //comment or set to 0 for production release, 0 = no debug 1 = debug over telnet, 2 = debug over usb serial
+#define DBG 0  //comment or set to 0 for production release, 0 = no debug 1 = debug over telnet, 2 = debug over usb serial
 #endif
 
 #ifndef FAKE_RFID
@@ -62,6 +62,8 @@
 
 #ifndef HA
 #define HA 0  // set to 1 to enable Home Assistent support in code
+#ifndef ENABLE_OCPP
+#define ENABLE_OCPP 0
 #endif
 
 #ifndef MODEM
@@ -111,19 +113,46 @@
 extern RemoteDebug Debug;
 #endif
 
+#define EVSE_LOG_FORMAT(letter, format) "[%6u][" #letter "][%s:%u] %s(): " format , (uint32_t) (esp_timer_get_time() / 1000ULL), pathToFileName(__FILE__), __LINE__, __FUNCTION__
+
 #if DBG == 2
 #define DEBUG_DISABLED 1
-#define _LOG_W( ... ) log_w ( __VA_ARGS__ )
-#define _LOG_I( ... ) log_i ( __VA_ARGS__ )
-#define _LOG_D( ... ) log_d ( __VA_ARGS__ )
-#define _LOG_V( ... ) log_v ( __VA_ARGS__ )
-#define _LOG_A( ... ) log_n ( __VA_ARGS__ )
-#define _LOG_W_NO_FUNC( ... ) Serial.printf ( __VA_ARGS__ )
-#define _LOG_I_NO_FUNC( ... ) Serial.printf ( __VA_ARGS__ )
-#define _LOG_D_NO_FUNC( ... ) Serial.printf ( __VA_ARGS__ )
-#define _LOG_V_NO_FUNC( ... ) Serial.printf ( __VA_ARGS__ )
+#if LOG_LEVEL >= 1  // Errors
+#define _LOG_A(fmt, ... ) Serial.printf(EVSE_LOG_FORMAT(E, fmt), ##__VA_ARGS__)
 #define _LOG_A_NO_FUNC( ... ) Serial.printf ( __VA_ARGS__ )
+#else
+#define _LOG_A( ... )
+#define _LOG_A_NO_FUNC( ... )
 #endif
+#if LOG_LEVEL >= 2  // Warnings
+#define _LOG_W(fmt, ... ) Serial.printf(EVSE_LOG_FORMAT(W, fmt), ##__VA_ARGS__)
+#define _LOG_W_NO_FUNC( ... ) Serial.printf ( __VA_ARGS__ )
+#else
+#define _LOG_W( ... ) 
+#define _LOG_W_NO_FUNC( ... )
+#endif
+#if LOG_LEVEL >= 3  // Info
+#define _LOG_I(fmt, ... ) Serial.printf(EVSE_LOG_FORMAT(I, fmt), ##__VA_ARGS__)
+#define _LOG_I_NO_FUNC( ... ) Serial.printf ( __VA_ARGS__ )
+#else
+#define _LOG_I( ... )
+#define _LOG_I_NO_FUNC( ... )
+#endif
+#if LOG_LEVEL >= 4  // Debug
+#define _LOG_D(fmt, ... ) Serial.printf(EVSE_LOG_FORMAT(D, fmt), ##__VA_ARGS__)
+#define _LOG_D_NO_FUNC( ... ) Serial.printf ( __VA_ARGS__ )
+#else
+#define _LOG_D( ... ) 
+#define _LOG_D_NO_FUNC( ... )
+#endif
+#if LOG_LEVEL >= 5  // Verbose
+#define _LOG_V(fmt, ... ) Serial.printf(EVSE_LOG_FORMAT(V, fmt), ##__VA_ARGS__)
+#define _LOG_V_NO_FUNC( ... ) Serial.printf ( __VA_ARGS__ )
+#else
+#define _LOG_V( ... ) 
+#define _LOG_V_NO_FUNC( ... )
+#endif
+#endif  // if DBG == 2
 
 // Pin definitions left side ESP32
 #define PIN_TEMP 36
@@ -174,6 +203,8 @@ extern RemoteDebug Debug;
 #define MAX_MAINS 40                                                            // max Current the Mains connection can supply
 #define MAX_SUMMAINS 600                                                        // only used for capacity rate limiting, max current over the sum of all phases
 #define MAX_CURRENT 32                                                          // max charging Current for the EV
+#define MAX_SUMMAINSTIME 0
+#ifndef MIN_CURRENT
 #define MIN_CURRENT 6                                                           // minimum Current the EV will accept
 #define MODE 0                                                                  // Normal EVSE mode
 #define LOCK 2                                                                  // Motor Cable lock with 4 wires
@@ -210,14 +241,17 @@ extern RemoteDebug Debug;
 #define EMCUSTOM_EDIVISOR 8
 #define RFID_READER 0
 #define WIFI_MODE 1
+#define ACCESS_BIT 1
 #define AP_PASSWORD "00000000"
 #define CARD_OFFSET 0
 #define INITIALIZED 0
-#define ENABLE_C2 NOT_PRESENT
+#define ENABLE_C2 ALWAYS_ON
 #define MAX_TEMPERATURE 65
 #define DELAYEDSTARTTIME 0                                                             // The default StartTime for delayed charged, 0 = not delaying
 #define DELAYEDSTOPTIME 0                                                       // The default StopTime for delayed charged, 0 = not stopping
-
+#define SOLARSTARTTIME 40                                                       // Seconds to keep chargecurrent at 6A
+#define OCPP_MODE 0
+#define AUTOUPDATE 0                                                            // default for Automatic Firmware Update: 0 = disabled, 1 = enabled
 
 // Mode settings
 #define MODE_NORMAL 0
@@ -241,8 +275,8 @@ extern RemoteDebug Debug;
 #define STATE_COMM_C 6                                                          // G State change request B->C (set by node)
 #define STATE_COMM_C_OK 7                                                       // H State change B->C OK (set by master)
 #define STATE_ACTSTART 8                                                        // I Activation mode in progress
-#define STATE_B1 9                                                              // J Vehicle connected / no PWM signal
-#define STATE_C1 10                                                             // K Vehicle charging / no PWM signal (temp state when stopping charge from EVSE)
+#define STATE_B1 9                                                              // J Vehicle connected / EVSE not ready to deliver energy: no PWM signal
+#define STATE_C1 10                                                             // K Vehicle charging / EVSE not ready to deliver energy: no PWM signal (temp state when stopping charge from EVSE)
 #define STATE_MODEM_REQUEST 11                                                          // L Vehicle connected / requesting ISO15118 communication, 0% duty
 #define STATE_MODEM_WAIT 12                                                          // M Vehicle connected / requesting ISO15118 communication, 5% duty
 #define STATE_MODEM_DONE 13                                                // Modem communication succesful, SoCs extracted. Here, re-plug vehicle
@@ -290,8 +324,8 @@ extern RemoteDebug Debug;
 #define BACKLIGHT_ON digitalWrite(PIN_LCD_LED, HIGH);
 #define BACKLIGHT_OFF digitalWrite(PIN_LCD_LED, LOW);
 
-#define ACTUATOR_LOCK { digitalWrite(PIN_ACTB, HIGH); digitalWrite(PIN_ACTA, LOW); }
-#define ACTUATOR_UNLOCK { digitalWrite(PIN_ACTB, LOW); digitalWrite(PIN_ACTA, HIGH); }
+#define ACTUATOR_LOCK { _LOG_A("Locking Actuator.\n"); digitalWrite(PIN_ACTB, HIGH); digitalWrite(PIN_ACTA, LOW); }
+#define ACTUATOR_UNLOCK { _LOG_A("Unlocking Actuator.\n"); digitalWrite(PIN_ACTB, LOW); digitalWrite(PIN_ACTA, HIGH); }
 #define ACTUATOR_OFF { digitalWrite(PIN_ACTB, HIGH); digitalWrite(PIN_ACTA, HIGH); }
 
 #define ONEWIRE_LOW { digitalWrite(PIN_SW_IN, LOW); pinMode(PIN_SW_IN, OUTPUT); }   // SW set to 0, set to output (driven low)
@@ -299,7 +333,8 @@ extern RemoteDebug Debug;
 #define ONEWIRE_FLOATHIGH pinMode(PIN_SW_IN, INPUT_PULLUP );                        // SW input (floating high)
 
 #define RCMFAULT digitalRead(PIN_RCM_FAULT)
-
+#define FREE(x) free(x); x = NULL;
+#define FW_DOWNLOAD_PATH "http://smartevse-3.s3.eu-west-2.amazonaws.com"
 
 #define MODBUS_INVALID 0
 #define MODBUS_OK 1
@@ -371,12 +406,21 @@ extern RemoteDebug Debug;
 #define MENU_EMCUSTOM_EDIVISOR 32                                               // 0x0217: Divisor for Energy (kWh) of custom electric meter (10^x)
 #define MENU_EMCUSTOM_READMAX 33                                                // 0x0218: Maximum register read (ToDo)
 #define MENU_WIFI 34                                                            // 0x0219: WiFi mode
-#define MENU_C2 35
-#define MENU_MAX_TEMP 36
-#define MENU_SUMMAINS 37
-#define MENU_OFF 38                                                             // so access bit is reset and charging stops when pressing < button 2 seconds
-#define MENU_ON 39                                                              // so access bit is set and charging starts when pressing > button 2 seconds
-#define MENU_EXIT 40
+#define MENU_AUTOUPDATE 35
+#define MENU_C2 36
+#define MENU_MAX_TEMP 37
+#define MENU_SUMMAINS 38
+#define MENU_SUMMAINSTIME 39
+#if ENABLE_OCPP == 0
+#define MENU_OFF 40                                                             // so access bit is reset and charging stops when pressing < button 2 seconds
+#define MENU_ON 41                                                              // so access bit is set and charging starts when pressing > button 2 seconds
+#define MENU_EXIT 42
+#else
+#define MENU_OCPP 40                                                            // OCPP Disable / Enable / Further modes
+#define MENU_OFF 41                                                             // so access bit is reset and charging stops when pressing < button 2 seconds
+#define MENU_ON 42                                                              // so access bit is set and charging starts when pressing > button 2 seconds
+#define MENU_EXIT 43
+#endif
 
 #define MENU_STATE 50
 
@@ -407,6 +451,10 @@ extern RemoteDebug Debug;
 #define ENDIANESS_HBF_LWF 2
 #define ENDIANESS_HBF_HWF 3
 
+#define OWNER_FACT "SmartEVSE"
+#define REPO_FACT "SmartEVSE-3"
+#define OWNER_COMM "dingo35"
+#define REPO_COMM "SmartEVSE-3.5"
 
 typedef enum mb_datatype {
     MB_DATATYPE_INT32 = 0,
@@ -437,8 +485,8 @@ extern uint8_t EVMeterAddress;
 extern uint8_t Show_RFID;
 #endif
 
-extern int32_t Irms[3];                                                         // Momentary current per Phase (Amps *10) (23 = 2.3A)
-extern int32_t Irms_EV[3];                                                         // Momentary current per Phase (Amps *10) (23 = 2.3A)
+extern int16_t Irms[3];                                                         // Momentary current per Phase (Amps *10) (23 = 2.3A)
+extern int16_t Irms_EV[3];                                                         // Momentary current per Phase (Amps *10) (23 = 2.3A)
 
 extern uint8_t State;
 extern uint8_t ErrorFlags;
@@ -458,7 +506,7 @@ extern uint32_t ScrollTimer;
 extern uint8_t ChargeDelay;                                                     // Delays charging in seconds.
 extern uint8_t TestState;
 extern uint8_t Access_bit;
-extern uint8_t CardOffset;
+extern uint16_t CardOffset;
 
 extern uint8_t GridActive;                                                      // When the CT's are used on Sensorbox2, it enables the GRID menu option.
 extern uint8_t CalActive;                                                       // When the CT's are used on Sensorbox(1.5 or 2), it enables the CAL menu option.
@@ -466,7 +514,7 @@ extern uint16_t Iuncal;
 extern uint16_t SolarStopTimer;
 extern int32_t EnergyCharged;
 extern int32_t EnergyCapacity;
-extern int32_t PowerMeasured;
+extern int16_t PowerMeasured;
 extern uint8_t RFIDstatus;
 extern bool LocalTimeSet;
 extern uint32_t serialnr;
@@ -474,9 +522,7 @@ extern uint32_t serialnr;
 extern uint8_t MenuItems[MENU_EXIT];
 
 enum EnableC2_t { NOT_PRESENT, ALWAYS_OFF, SOLAR_OFF, ALWAYS_ON, AUTO };
-enum Modem_t { NOTPRESENT, EXPERIMENT };
 const static char StrEnableC2[][12] = { "Not present", "Always Off", "Solar Off", "Always On", "Auto" };
-const static char StrModem[][12] = { "Not present", "Experiment" };
 enum Single_Phase_t { FALSE, GOING_TO_SWITCH, AFTER_SWITCH };
 extern Single_Phase_t Switching_To_Single_Phase;
 extern uint8_t Nr_Of_Phases_Charging;
@@ -529,9 +575,14 @@ const struct {
     {"ENE DIVI","Divisor for Energy (kWh) of custom electric meter",  0, 7, EMCUSTOM_EDIVISOR},
     {"READ MAX","Max register read at once of custom electric meter", 3, 255, 3},
     {"WIFI",    "Connect to WiFi access point",                       0, 2, WIFI_MODE},
+    {"AUTOUPDAT","Automatic Firmware Update",                         0, 1, AUTOUPDATE},
     {"CONTACT 2","Contactor2 (C2) behaviour",                          0, sizeof(StrEnableC2) / sizeof(StrEnableC2[0])-1, ENABLE_C2},
     {"MAX TEMP","Maximum temperature for the EVSE module",            40, 75, MAX_TEMPERATURE},
     {"SUM MAINS","Capacity Rate limit on sum of MAINS Current (A)",    10, 600, MAX_SUMMAINS},
+    {"SUM STOP","Stop Capacity Rate limit charging after X minutes",    0, 60, MAX_SUMMAINSTIME},
+#if ENABLE_OCPP
+    {"OCPP",    "Select OCPP mode",                                   0, 1, OCPP_MODE},
+#endif
     {"", "Hold 2 sec to stop charging", 0, 0, 0},
     {"", "Hold 2 sec to start charging", 0, 0, 0},
 
@@ -573,7 +624,6 @@ extern struct DelayedTimeStruct DelayedStartTime;
 void CheckAPpassword(void);
 void read_settings();
 void write_settings(void);
-void setSolarStopTimer(uint16_t Timer);
 void setState(uint8_t NewState);
 void setAccess(bool Access);
 void SetCPDuty(uint32_t DutyCycle);
@@ -582,5 +632,9 @@ uint16_t getItemValue(uint8_t nav);
 void ConfigureModbusMode(uint8_t newmode);
 
 void handleWIFImode(void);
+
+#if ENABLE_OCPP
+void ocppUpdateRfidReading(const unsigned char *uuid, size_t uuidLen);
+#endif //ENABLE_OCPP
 
 #endif

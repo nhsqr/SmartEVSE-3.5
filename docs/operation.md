@@ -10,14 +10,21 @@ After configuration of your Wifi parameters, your SmartEVSE will present itself 
 * http://smartevse-xxxx.local/ where xxxx is the serial number of your SmartEVSE. It can be found on a sticker on the bottom of your SmartEVSE. It might be necessary that mDNS is configured on your LAN.
 * http://smartevse-xxxx.lan/ where xxxx is the serial number of your SmartEVSE. It can be found on a sticker on the bottom of your SmartEVSE. It might be necessary that mDNS is configured on your LAN.
 * OTA update of your firmware:
-    - surf to http://your-smartevse/update
+    - surf to http://your-smartevse/update or press the UPDATE button on the webserver
     - select the firmware.bin from this archive, OR if you want the debug version (via telnet over your wifi),
  rename firmware.debug.bin to firmware.bin and select that. YOU CANNOT FLASH A FILE WITH ANOTHER NAME!
     - if you get FAIL, check your wifi connection and try again;
-    - after OK, select spiffs.bin from this archive;
-    - if you get FAIL, check your wifi connection and try again;
     - after OK, wait 10-30 seconds and your new firmware including the webserver should be online!
 * Added wifi-debugging: if you flashed the debug version, telnet http://your-smartevse/ will bring you to a debugger that shows you whats going on!
+* OTA upload of rfid lists:
+    - via the "update" button or the /update endpoint you can upload a file called rfid.txt;
+    - file layout: every line is supposed to contain one RFID (=NFC) TAG UID of size bytes in hex format:
+'''
+112233445566
+0A3B123FFFA0
+'''
+    - before upload all existing RFID's are deleted in the SmartEVSE you are uploading to
+    - if you have PWR SHARE enabled (master/slave configuration), you must upload to every single SmartEVSE; this enables you to maintain different lists for different SmartEVSEs.
 
 # Mode switching when PWR SHARE is activated
 * If you switch mode on the Master, the Slaves will follow that mode switch
@@ -33,18 +40,16 @@ Once the temperature has dropped below 55ºC charging is started again.
 * RESIDUAL FAULT CURRENT DETECTED<br>An optional DC Residual Current Monitor has detected a fault current, the Contactor is switched off.
 The error condition can be reset by pressing any button on the SmartEVSE.
 
-
-
 # Changes with regards to the original firmware
 * Endpoint to send L1/2/3 data, this removed the need for a SensorBox
   * Note: Set MainsMeter to the new 'API' option in the config menu when sending L1/2/3
 * Endpoint to send EvMeter L1/2/3 data (and energy/power)
   * Note: Set EvMeter to the new 'API' option in the config menu when sending L1/2/3
-* Callable API endpoints for easy integration (see [API Overview](#API-Overview) and [Home Assistant Integration](#Integration-with-Home-Assistant))
+* Callable API endpoints for easy integration (see [REST_API](REST_API.md) and [Home Assistant Integration](configuration.md#integration-with-home-assistant))
   * Change charging mode
   * Override charge current
-  * Pass in current measurements (p1, battery, ...) - this eliminates having to use additionalhard
-  * Switch between single- and three phase power (requires extra 2P relais on the 2nd output)
+  * Pass in current measurements (p1, battery, ...) - this eliminates having to use additional hardware
+  * Switch between single- and three phase power (requires extra 2P relais on the c2 connecor, see [Second Contactor](installation.md#second-contactor-c2))
 
 # Simple Timer
 

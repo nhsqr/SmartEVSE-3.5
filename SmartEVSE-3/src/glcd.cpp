@@ -411,6 +411,8 @@ void GLCD(void) {
     LCDTimer++;
     
     if (LCDNav) {
+        GLCD_buffer_clr();
+        // top line
         if (LCDNav == MENU_RFIDREADER && SubMenu) {
             if (RFIDstatus == 2) GLCD_print_buf(0, (const char*) "Card Stored");
             else if (RFIDstatus == 3) GLCD_print_buf(0, (const char*) "Card Deleted");
@@ -419,33 +421,32 @@ void GLCD(void) {
             else if (RFIDstatus == 6) GLCD_print_buf(0, (const char*) "Card storage full!");
             else glcd_clrln(0, 0x00);                                           // Clear line
             LCDTimer = 0;                                                       // reset timer, so it will not exit the menu when learning/deleting cards
-        }
+        } else {
+            // When connected to Wifi, display IP and time in top row
+            uint8_t WIFImode = getItemValue(MENU_WIFI);
+            if (WIFImode == 1 ) {   // Wifi Enabled
 
-        GLCD_buffer_clr();
-        // When connected to Wifi, display IP and time in top row
-        uint8_t WIFImode = getItemValue(MENU_WIFI);
-        if (WIFImode == 1 ) {   // Wifi Enabled
+                if (WiFi.status() == WL_CONNECTED) {
+                    sprintf(Str, "%s",WiFi.localIP().toString().c_str());
+                    GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
+                    if (LocalTimeSet) sprintf(Str, "%02u:%02u",timeinfo.tm_hour, timeinfo.tm_min);
+                    else sprintf(Str, "--:--");
+                    GLCD_write_buf_str(127,0, Str, GLCD_ALIGN_RIGHT);
+                } else GLCD_write_buf_str(0,0, "Not connected to WiFi", GLCD_ALIGN_LEFT);
 
-            if (WiFi.status() == WL_CONNECTED) {
-                sprintf(Str, "%s",WiFi.localIP().toString().c_str());
-                GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
-                if (LocalTimeSet) sprintf(Str, "%02u:%02u",timeinfo.tm_hour, timeinfo.tm_min);
-                else sprintf(Str, "--:--");
-                GLCD_write_buf_str(127,0, Str, GLCD_ALIGN_RIGHT);
-            } else GLCD_write_buf_str(0,0, "Not connected to WiFi", GLCD_ALIGN_LEFT);
-
-        // When Wifi Setup is selected, show password and SSID of the Access Point
-        } else if (WIFImode == 2) {
-            if (SubMenu && WiFi.getMode() != WIFI_AP_STA) {           // Do not show if AP_STA mode is started
-                sprintf(Str, "O button starts portal");
-                GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
-            } else {
-                // Show Access Point name
-                sprintf(Str, "AP:%u", serialnr);
-                GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
-                // and password
-                sprintf(Str, "PW:%s", APpassword.c_str());
-                GLCD_write_buf_str(127,0, Str, GLCD_ALIGN_RIGHT);
+            // When Wifi Setup is selected, show password and SSID of the Access Point
+            } else if (WIFImode == 2) {
+                if (SubMenu && WiFi.getMode() != WIFI_AP_STA) {           // Do not show if AP_STA mode is started
+                    sprintf(Str, "O button starts portal");
+                    GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
+                } else {
+                    // Show Access Point name
+                    sprintf(Str, "AP:%u", serialnr);
+                    GLCD_write_buf_str(0,0, Str, GLCD_ALIGN_LEFT);
+                    // and password
+                    sprintf(Str, "PW:%s", APpassword.c_str());
+                    GLCD_write_buf_str(127,0, Str, GLCD_ALIGN_RIGHT);
+                }
             }
         }
         // update LCD
@@ -455,7 +456,7 @@ void GLCD(void) {
             LCDNav = 0;                                                         // Exit Setup menu after 120 seconds.
             read_settings();                                                    // don't save, but restore settings
         } else return;                                                          // disable LCD status messages when navigating LCD Menu
-    }
+    } // if LCDNav
    
     if (LCDTimer == 1) {
         LCDText = 0;
@@ -799,6 +800,9 @@ const char * getMenuItemOption(uint8_t nav) {
     const static char StrEnabled[] = "Enabled";
     const static char StrExitMenu[] = "MENU";
     const static char StrRFIDReader[6][10] = {"Disabled", "EnableAll", "EnableOne", "Learn", "Delete", "DeleteAll"};
+#if ENABLE_OCPP
+    const static char StrOcpp[2][10] = {"Disabled", "Enabled"};
+#endif
     const static char StrWiFi[3][10] = {"Disabled", "Enabled", "SetupWifi"};
 
     unsigned int value = getItemValue(nav);
@@ -819,6 +823,7 @@ const char * getMenuItemOption(uint8_t nav) {
         case MENU_START:
                 sprintf(Str, "-%2u A", value);
                 return Str;
+        case MENU_SUMMAINSTIME:
         case MENU_STOP:
             if (value) {
                 sprintf(Str, "%2u min", value);
@@ -840,6 +845,7 @@ const char * getMenuItemOption(uint8_t nav) {
             else return StrDisabled;
         case MENU_SWITCH:
             return StrSwitch[value];
+        case MENU_AUTOUPDATE:
         case MENU_RCMON:
             if (value) return StrEnabled;
             else return StrDisabled;
@@ -886,6 +892,10 @@ const char * getMenuItemOption(uint8_t nav) {
             return Str;
         case MENU_RFIDREADER:
             return StrRFIDReader[value];
+#if ENABLE_OCPP
+        case MENU_OCPP:
+            return StrOcpp[value];
+#endif
         case MENU_WIFI:
             return StrWiFi[value];
         case MENU_EXIT:
@@ -962,9 +972,18 @@ uint8_t getMenuItems (void) {
     MenuItems[m++] = MENU_RCMON;                                                // Residual Current Monitor on RCM (0:Disable / 1:Enable)
     MenuItems[m++] = MENU_RFIDREADER;                                           // RFID Reader connected to SW (0:Disable / 1:Enable / 2:Learn / 3:Delete / 4:Delate All)
     MenuItems[m++] = MENU_WIFI;                                                 // Wifi Disabled / Enabled / Portal
+    if (getItemValue(MENU_WIFI)  == 1) {                                        // only show AutoUpdate menu if Wifi enabled
+        MenuItems[m++] = MENU_AUTOUPDATE;                                       // Firmware automatic update Disabled / Enabled
+#if ENABLE_OCPP
+        MenuItems[m++] = MENU_OCPP;                                             // OCPP (0:Disable / 1:Enable)
+#endif
+    }
     MenuItems[m++] = MENU_MAX_TEMP;
-    if (MainsMeter && LoadBl < 2)
+    if (MainsMeter && LoadBl < 2) {
         MenuItems[m++] = MENU_SUMMAINS;
+        if (getItemValue(MENU_SUMMAINS) != 600)
+            MenuItems[m++] = MENU_SUMMAINSTIME;
+    }
     MenuItems[m++] = MENU_EXIT;
 
     return m;
@@ -991,7 +1010,7 @@ void GLCDMenu(uint8_t Buttons) {
     BacklightTimer = BACKLIGHT;                                                 // delay before LCD backlight turns off.
 
     // Disable buttons when access switch is configured and access is denied
-    if ((getItemValue(MENU_SWITCH) == 1 || getItemValue(MENU_SWITCH) == 2) && Access_bit == 0)
+    if ((getItemValue(MENU_SWITCH) == 1 || getItemValue(MENU_SWITCH) == 2) && Access_bit == 0 && LCDNav == 0)
         return;
 
     if (getItemValue(MENU_RCMON) == 1 && (ErrorFlags & RCM_TRIPPED) && RCMFAULT == LOW) {          // RCM was tripped, but RCM level is back to normal
@@ -1009,7 +1028,7 @@ void GLCDMenu(uint8_t Buttons) {
         ButtonRelease = 0;
         GLCD();
     // stop charging if < button is pressed longer then 2 seconds
-    } else if ((State == STATE_C) && (LCDNav == 0) && (Buttons == 0x6) && (ButtonRelease == 0)) {     // Button 1 pressed ?
+    } else if ((LCDNav == 0) && (Buttons == 0x6) && (ButtonRelease == 0)) {     // Button 1 pressed ?
         LCDNav = MENU_OFF;                                                      // about to cancel charging
         ButtonTimer = millis();
     } else if (LCDNav == MENU_OFF && ((ButtonTimer + 2000) < millis() )) {
@@ -1106,7 +1125,7 @@ void GLCDMenu(uint8_t Buttons) {
                 ErrorFlags = NO_ERROR;                                          // Clear All Errors when exiting the Main Menu
                 TestState = 0;                                                  // Clear TestState
                 ChargeDelay = 0;                                                // Clear ChargeDelay
-                setSolarStopTimer(0);                                           // Disable Solar Timer
+                SolarStopTimer = 0;                                             // Disable Solar Timer
                 GLCD();
                 write_settings();                                               // Write to eeprom
                 ButtonRelease = 2;                                              // Skip updating of the LCD 
