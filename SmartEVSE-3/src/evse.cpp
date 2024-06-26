@@ -2981,7 +2981,6 @@ void mqttPublishData() {
     #define jsna(x, y) String(R"(, )") + jsn(x, y)
     //json add expansion, same as above but now with a comma prepended
 
-    if (MQTTclient.connected()) {
         MQTTclient.publish(MQTTprefix + "/Mode", Access_bit == 0 ? "Off" : Mode > 3 ? "N/A" : StrMode[Mode], true, 0);
         MQTTclient.publish(MQTTprefix + "/Access", String(StrAccessBit[Access_bit]), true, 0);
         MQTTclient.publish(MQTTprefix + "/RFID", !RFIDReader ? "Not Installed" : RFIDstatus >= 8 ? "NOSTATUS" : StrRFIDStatusWeb[RFIDstatus], true, 0);
@@ -3056,12 +3055,7 @@ void mqttPublishData() {
                 MQTTclient.publish(MQTTprefix + "/MeterCurrents", "{" + MeterCurrents + "}", false, 0);
             }
         }
-    } else {
-        if (WiFi.status() == WL_CONNECTED) {
-            // Setup MQTT client again so we can reconnect
-            SetupMQTTClient();
-        }
-    }
+
 #if ENABLE_OCPP
         MQTTclient.publish(MQTTprefix + "/OCPP", OcppMode ? "Enabled" : "Disabled", true, 0);
         MQTTclient.publish(MQTTprefix + "/OCPPConnection", (OcppWsClient && OcppWsClient->isConnected()) ? "Connected" : "Disconnected", false, 0);
