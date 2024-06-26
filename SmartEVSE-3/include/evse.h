@@ -22,8 +22,8 @@
  */
 
 #ifndef __EVSE_MAIN
-
 #define __EVSE_MAIN
+#endif
 
 #ifndef DBG
 //the wifi-debugger is available by telnetting to your SmartEVSE device
@@ -62,6 +62,8 @@
 
 #ifndef HA
 #define HA 0  // set to 1 to enable Home Assistent support in code
+#endif
+
 #ifndef ENABLE_OCPP
 #define ENABLE_OCPP 0
 #endif
